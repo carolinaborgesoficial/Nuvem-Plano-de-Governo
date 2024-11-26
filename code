@@ -1,0 +1,108 @@
+import spacy
+import pdfplumber
+import re
+from collections import Counter
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
+
+# Carregar modelo do spaCy para português
+nlp = spacy.load("pt_core_news_sm")
+
+# Função para juntar palavras divididas em linhas
+def juntar_palavras_divididas(texto):
+    """Remove quebras de linha e junta palavras divididas por hífen."""
+    texto = texto.replace('\n', ' ')
+    texto = re.sub(r'(\w)-(\s*)\n(\s*)(\w)', r'\1\2\4', texto)  # Junta as partes
+    texto = re.sub(r'(\w)-(\w)', r'\1\2', texto) # Remove o hífen
+    return texto
+
+# Função para contar ocorrências de palavras-chave com pattern matching
+def contar_ocorrencias_palavras_chave(texto, palavras_chave):
+    """Conta as ocorrências de palavras-chave em um texto usando pattern matching."""
+    ocorrencias = {}
+    doc = nlp(texto)
+
+    for palavra_chave in palavras_chave:
+        lema_palavra_chave = nlp(palavra_chave)[0].lemma_
+        ocorrencias[lema_palavra_chave] = 0
+
+        for token in doc:
+            # Busca por prefixo para encontrar variações
+            if token.lemma_.startswith(lema_palavra_chave[:6]):  # Usa os 6 primeiros caracteres do lema como prefixo
+                ocorrencias[lema_palavra_chave] += 1
+
+    return ocorrencias
+
+# Função para extrair texto com pdfplumber
+def extrair_texto_com_pdfplumber(pdf_path):
+    with pdfplumber.open(pdf_path) as pdf:
+        texto_completo = ""
+        for page in pdf.pages:
+            texto_completo += page.extract_text()
+        return texto_completo
+
+# Função para criar um mapa de cores azul escuro com contraste melhorado
+def azul_escuro_colormap(word, font_size, position, orientation, random_state=None, **kwargs):
+    return "rgb(0, 51, 102)"  # Azul escuro mais intenso
+
+# Lista de palavras-chave
+palavras_chave = [
+    "adolescente", "adulto", "amamentação", "aprendizagem", "creche",
+    "assédio", "bebê", "criança", "cuidado", "ensino", "escola",
+    "feminicídio", "infância", "infantil", "jovem",  "juventude",
+    "mãe", "materno", "nutrição", "tutelar",
+    "puerpério"
+]
+
+# Nome do arquivo PDF (substitua pelo nome do seu arquivo)
+nome_arquivo = "PlanoGoverno.pdf"  # Substitua pelo nome do seu arquivo
+
+# Extrair o texto do PDF com pdfplumber
+texto = extrair_texto_com_pdfplumber(nome_arquivo)
+
+# Pré-processamento do texto
+texto = juntar_palavras_divididas(texto)
+
+# Contar ocorrências de palavras-chave com pattern matching
+ocorrencias = contar_ocorrencias_palavras_chave(texto, palavras_chave)
+
+# Ordenar as ocorrências pelo número de ocorrências (decrescente)
+ocorrencias_ordenadas = dict(sorted(ocorrencias.items(), key=lambda item: item[1], reverse=True))
+
+# Imprimir as palavras da busca e a tabela de ocorrências
+print(f"\nResultados para o arquivo: {nome_arquivo}")
+print("Palavras da busca:")
+for palavra in palavras_chave:
+    print(palavra)
+
+print("\nTabela de Ocorrências:")
+print("-------------------------")
+print("| Palavra       | Ocorrências |")
+print("-------------------------")
+for lema, contagem in ocorrencias_ordenadas.items():
+    print(f"| {lema:<14} | {contagem:>11} |")
+print("-------------------------")
+
+# Criar mapa de cores azul escuro com contraste melhorado
+azul_escuro_cmap = LinearSegmentedColormap.from_list("azul_escuro", [(1, 1, 1), (0, 51/255, 102/255)])
+
+# Criar nuvem de palavras com o mapa de cores, palavras horizontais e contraste melhorado
+if ocorrencias_ordenadas:
+    nuvem_palavras = WordCloud(
+        width=400,
+        height=400,
+        background_color="white",
+        colormap=azul_escuro_cmap,
+        color_func=azul_escuro_colormap,
+        prefer_horizontal=1
+    ).generate_from_frequencies(ocorrencias_ordenadas)
+
+    # Plotar a nuvem de palavras
+    plt.figure(figsize=(10, 5))
+    plt.imshow(nuvem_palavras, interpolation="bilinear")
+    plt.axis("off")
+    # plt.title(f"Nuvem de Palavras - {nome_arquivo}")
+    plt.show()
+else:
+    print(f"O dicionário de frequências para o arquivo {nome_arquivo} está vazio. Não é possível gerar a nuvem de palavras.")
